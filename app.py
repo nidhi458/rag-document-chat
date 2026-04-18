@@ -62,21 +62,31 @@ def load_rag_pipeline():
     return retriever
 
 def rag_simple(query: str, retriever, llm, top_k: int = 3) -> str:
-    """Your existing rag_simple function (copy from query.py)"""
+    """Your existing rag_simple function"""
     results = retriever.retrieve(query, top_k=top_k)
     context = "\n\n".join([doc['content'] for doc in results]) if results else ""
     
     if not context:
         return "No relevant context found in your documents."
     
-    prompt = f"""Use the following context from your documents to answer concisely.
+    prompt = f"""You are an expert assistant.
 
-CONTEXT:
+Answer the user's question in a natural and professional way using the information below.
+
+Rules:
+1. Give a direct answer.
+2. Use your own words.
+3. Provide a helpful answer in 2 to 3 sentences.
+4. Do NOT say phrases like "according to the provided context" or "based on the provided context".
+5. Respond as if you are confidently answering from knowledge.
+
+Information:
 {context}
 
-QUESTION: {query}
+Question:
+{query}
 
-ANSWER:"""
+Answer:"""
     
     with st.spinner("Generating answer..."):
         response = llm.invoke(prompt)
@@ -87,7 +97,7 @@ ANSWER:"""
 def get_llm():
     return ChatGroq(
         groq_api_key=os.getenv("GROQ_API_KEY"),
-        model_name="llama-3.1-8b-instant",  # Your working model
+        model_name="llama-3.1-8b-instant",
         temperature=0.1,
         max_tokens=1024
     )
@@ -124,25 +134,40 @@ for message in st.session_state.messages:
 
 # Chat input
 if prompt := st.chat_input("Ask about AWS APIs, Stripe payments, or OpenAI agents..."):
+    
     # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
+
     with st.chat_message("user"):
         st.markdown(prompt)
     
-    # Generate response
+    # Generate assistant response
     with st.chat_message("assistant"):
         with st.spinner("Searching your 608 documents..."):
             answer = rag_simple(prompt, retriever, llm, top_k=3)
-        
-        # Show sources
+
+        # SHOW ANSWER FIRST
+        st.markdown(answer)
+
+        # SHOW SOURCES AFTER ANSWER
         st.markdown("**Sources:**")
         results = st.session_state.retriever.retrieve(prompt, top_k=3)
+
         for i, doc in enumerate(results, 1):
-            with st.expander(f"Source {i}: {doc['metadata'].get('source_file', 'Unknown')} (Sim: {doc['similarity_score']:.3f})"):
-                st.write(doc['content'][:500] + "...")
-        
-        st.markdown(answer)
-        st.session_state.messages.append({"role": "assistant", "content": answer})
+            source_name = doc["metadata"].get("source_file", "Unknown")
+            page_num = doc["metadata"].get("page", "N/A")
+
+            with st.expander(f"Source {i}: {source_name} (Page {page_num})"):
+                st.write(doc["content"][:500] + "...")
+
+        # Save assistant response
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer
+        })
 
 # Footer
 st.markdown("---")
