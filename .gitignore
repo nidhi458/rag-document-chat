@@ -1,4 +1,5 @@
-venv/
-.env
+myenv/
 __pycache__/
+.env
 *.pyc
+.chromadb/

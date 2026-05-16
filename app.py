@@ -23,16 +23,154 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
 st.markdown("""
 <style>
-.chat-message {
-    padding: 1rem;
-    border-radius: 1rem;
-    margin-bottom: 1rem;
+
+/* Main background */
+.stApp {
+    background: linear-gradient(135deg, #0f172a 0%, #111827 40%, #1e293b 100%);
+    color: white;
 }
-.user { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
-.assistant { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; }
+
+/* Remove ugly default padding */
+.block-container {
+    padding-top: 2rem;
+    padding-bottom: 1rem;
+    max-width: 1100px;
+}
+
+/* Title */
+h1 {
+    font-size: 3rem !important;
+    font-weight: 800 !important;
+    color: white !important;
+    letter-spacing: -1px;
+    margin-bottom: 0.3rem;
+}
+
+/* Subtitle */
+p {
+    font-size: 1rem;
+}
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background: rgba(15, 23, 42, 0.95);
+    border-right: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Sidebar text */
+section[data-testid="stSidebar"] * {
+    color: white !important;
+}
+
+/* Chat messages */
+[data-testid="stChatMessage"] {
+    border-radius: 18px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+}
+
+/* User message */
+[data-testid="stChatMessage"]:has(div[data-testid="chatAvatarIcon-user"]) {
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+}
+
+/* Assistant message */
+[data-testid="stChatMessage"]:has(div[data-testid="chatAvatarIcon-assistant"]) {
+    background: rgba(255,255,255,0.06);
+}
+
+/* Chat input */
+.stChatInputContainer {
+    background: rgba(15,23,42,0.95);
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 1rem;
+}
+
+/* Input box */
+textarea {
+    background: rgba(255,255,255,0.06) !important;
+    color: white !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* Buttons */
+.stButton>button {
+    background: linear-gradient(135deg, #2563eb, #7c3aed);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 0.6rem 1rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.stButton>button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(37,99,235,0.35);
+}
+
+/* Expander */
+.streamlit-expanderHeader {
+    background: rgba(255,255,255,0.04);
+    border-radius: 10px;
+    color: white !important;
+}
+
+/* Info box */
+.stAlert {
+    border-radius: 14px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.15);
+    border-radius: 10px;
+}
+
+/* Hide Streamlit branding */
+#MainMenu {
+    visibility: hidden;
+}
+
+footer {
+    visibility: hidden;
+}
+
+header {
+    background: transparent !important;
+}
+
+/* Sidebar toggle button */
+[data-testid="collapsedControl"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    position: fixed !important;
+    top: 1rem;
+    left: 1rem;
+    z-index: 999999 !important;
+    background: rgba(30,41,59,0.95) !important;
+    border-radius: 12px !important;
+    padding: 0.35rem !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+}
+
+/* Icon color */
+[data-testid="collapsedControl"] svg {
+    fill: white !important;
+    color: white !important;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -90,7 +228,7 @@ Answer:"""
     
     with st.spinner("Generating answer..."):
         response = llm.invoke(prompt)
-    return response.content
+    return response.content, results
 
 # Initialize LLM
 @st.cache_resource
@@ -113,7 +251,6 @@ with st.sidebar:
         st.rerun()
     
     st.markdown("---")
-    st.caption("Built with ❤️ using your RAG pipeline")
 
 # Main chat interface
 st.title("Chat with your Documents")
@@ -147,14 +284,14 @@ if prompt := st.chat_input("Ask about AWS APIs, Stripe payments, or OpenAI agent
     # Generate assistant response
     with st.chat_message("assistant"):
         with st.spinner("Searching your 608 documents..."):
-            answer = rag_simple(prompt, retriever, llm, top_k=3)
+            answer, results = rag_simple(prompt, retriever, llm, top_k=3)
 
         # SHOW ANSWER FIRST
         st.markdown(answer)
 
         # SHOW SOURCES AFTER ANSWER
         st.markdown("**Sources:**")
-        results = st.session_state.retriever.retrieve(prompt, top_k=3)
+        
 
         for i, doc in enumerate(results, 1):
             source_name = doc["metadata"].get("source_file", "Unknown")
@@ -172,3 +309,6 @@ if prompt := st.chat_input("Ask about AWS APIs, Stripe payments, or OpenAI agent
 # Footer
 st.markdown("---")
 st.markdown("*Powered by your custom RAG pipeline + llama-3.1-8b-instant*")
+
+
+
