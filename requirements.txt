@@ -1,8 +1,15 @@
 streamlit
+
 langchain
 langchain-community
 langchain-groq
+
 chromadb==0.4.24
+
 sentence-transformers
+
 pypdf
+
 python-dotenv
+
+numpy==1.26.4
