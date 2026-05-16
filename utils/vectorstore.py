@@ -1,126 +1,70 @@
-import numpy as np
 import chromadb
-import uuid
 import os
-import shutil
-from typing import List, Any
-
 
 class VectorStore:
-    """Manages document embeddings in a ChromaDB vector store"""
-
-    def __init__(
-        self,
-        collection_name: str = "pdf_documents",
-        persist_directory: str = "data/vector_store"
-    ):
-        """
-        Initialize the vector store
-
-        Args:
-            collection_name: Name of the ChromaDB collection
-            persist_directory: Directory to persist the vector store
-        """
-
-        self.collection_name = collection_name
+    def __init__(self, persist_directory="vector_store", collection_name="pdf_documents"):
         self.persist_directory = persist_directory
+        self.collection_name = collection_name
+
         self.client = None
         self.collection = None
 
         self._initialize_store()
 
     def _initialize_store(self):
-        """Initialize ChromaDB client and collection"""
+        """Stable ChromaDB initialization (Streamlit Cloud safe)"""
 
         try:
-            import os
-
-            # ONLY CREATE DIR — NEVER DELETE ON STREAMLIT CLOUD
             os.makedirs(self.persist_directory, exist_ok=True)
 
-            # Create ChromaDB client
+            # ✅ FIX: force safe client config (avoids tenant system crash)
             self.client = chromadb.PersistentClient(
-                path=self.persist_directory
+                path=self.persist_directory,
+                settings=chromadb.config.Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
             )
 
-            # Create collection safely
+            # ✅ FIX: avoid recreate/delete logic completely
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name
             )
 
-            print("Vector store initialized successfully.")
-            print(f"Collection name: {self.collection_name}")
-
-            try:
-                print(f"Documents in collection: {self.collection.count()}")
-            except Exception:
-                print("Collection is empty or not ready yet.")
+            print("Vector store initialized successfully")
+            print(f"Collection: {self.collection_name}")
 
         except Exception as e:
-            print(f"Error initializing vector store: {e}")
+            print(f"Vector store init error: {e}")
             self.client = None
             self.collection = None
 
-    def add_documents(self, documents: List[Any], embeddings: np.ndarray):
-        """
-        Add documents and embeddings to vector store
+    def add_documents(self, embeddings, texts, metadatas):
+        if self.collection is None:
+            raise Exception("Vector store not initialized")
 
-        Args:
-            documents: List of LangChain documents
-            embeddings: Corresponding embeddings
-        """
+        self.collection.add(
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
+            ids=[str(i) for i in range(len(texts))]
+        )
 
-        if len(documents) != len(embeddings):
-            raise ValueError(
-                "Number of documents must match number of embeddings"
-            )
+    def query(self, query_embedding, top_k=3):
+        if self.collection is None:
+            return []
 
-        print(f"Adding {len(documents)} documents to vector store...")
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k
+        )
 
-        ids = []
-        metadatas = []
-        documents_text = []
-        embeddings_list = []
+        docs = []
+        if results and results.get("documents"):
+            for i in range(len(results["documents"][0])):
+                docs.append({
+                    "content": results["documents"][0][i],
+                    "metadata": results["metadatas"][0][i] if results.get("metadatas") else {}
+                })
 
-        for i, (doc, embedding) in enumerate(zip(documents, embeddings)):
-
-            # Unique ID
-            doc_id = f"doc_{uuid.uuid4().hex[:8]}_{i}"
-            ids.append(doc_id)
-
-            # Metadata
-            metadata = dict(doc.metadata)
-
-            metadata["doc_index"] = i
-            metadata["content_length"] = len(doc.page_content)
-
-            metadatas.append(metadata)
-
-            # Document text
-            documents_text.append(doc.page_content)
-
-            # Embedding
-            embeddings_list.append(embedding.tolist())
-
-        try:
-            self.collection.add(
-                ids=ids,
-                embeddings=embeddings_list,
-                metadatas=metadatas,
-                documents=documents_text
-            )
-
-            print(
-                f"Successfully added {len(documents)} documents."
-            )
-
-            print(
-                f"Total documents in collection: "
-                f"{self.collection.count()}"
-            )
-
-        except Exception as e:
-            print(f"Error adding documents to vector store: {e}")
-            raise
-
-
+        return docs

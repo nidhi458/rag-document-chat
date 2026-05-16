@@ -1,11 +1,14 @@
 """
-RAG Document Chat - Streamlit UI (Stable Version)
+RAG Document Chat - Streamlit UI (Stable Fix Version)
 """
 
 import streamlit as st
 import sys
 import os
 from dotenv import load_dotenv
+
+# 🔥 FIX: suppress torch + streamlit watcher crash (IMPORTANT for Cloud)
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
 
 sys.path.append("utils")
 
@@ -14,10 +17,10 @@ from utils.embeddings import EmbeddingManager
 from query import RAGRetriever
 from langchain_groq import ChatGroq
 
-# ── ENV ─────────────────────────────────────
+# ── ENV ─────────────────────────
 load_dotenv()
 
-# ── PAGE CONFIG ─────────────────────────────
+# ── PAGE CONFIG ─────────────────
 st.set_page_config(
     page_title="RAG Doc Chat",
     page_icon="📄",
@@ -25,54 +28,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── SESSION STATE ────────────────────────────
+# ── SESSION STATE ───────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
-
-if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
-
-if "embedding_manager" not in st.session_state:
-    st.session_state.embedding_manager = None
 
 if "retriever" not in st.session_state:
     st.session_state.retriever = None
 
 
-# ── SAFE VECTORSTORE ACCESS ─────────────────
-def get_vectorstore():
-    return st.session_state.vectorstore
-
-
-# ── RAG PIPELINE LOADER ─────────────────────
-@st.cache_resource
-def load_rag_pipeline():
-    try:
-        with st.spinner("Loading RAG pipeline..."):
-
-            vectorstore = VectorStore()
-            embedding_manager = EmbeddingManager()
-            retriever = RAGRetriever(vectorstore, embedding_manager)
-
-            st.session_state.vectorstore = vectorstore
-            st.session_state.embedding_manager = embedding_manager
-            st.session_state.retriever = retriever
-
-            return retriever
-
-    except Exception as e:
-        st.error(f"Pipeline load failed: {e}")
-        return None
-
-
-# ── SAFE RETRIEVER ACCESS ───────────────────
-def get_retriever():
-    if st.session_state.retriever is None:
-        st.session_state.retriever = load_rag_pipeline()
-    return st.session_state.retriever
-
-
-# ── LLM ─────────────────────────────────────
+# ── LLM ─────────────────────────
 @st.cache_resource
 def get_llm():
     return ChatGroq(
@@ -83,16 +47,19 @@ def get_llm():
     )
 
 
-# ── SAFE RAG FUNCTION ───────────────────────
+# ── RAG PIPELINE ────────────────
+@st.cache_resource(show_spinner=True)
+def load_rag_pipeline():
+    vectorstore = VectorStore()
+    embedding_manager = EmbeddingManager()
+    retriever = RAGRetriever(vectorstore, embedding_manager)
+    return retriever
+
+
+# ── SAFE RAG CALL ───────────────
 def rag_simple(query, retriever, llm, top_k=3):
 
-    if retriever is None:
-        return "RAG system not initialized."
-
-    try:
-        results = retriever.retrieve(query, top_k=top_k)
-    except Exception as e:
-        return f"Retrieval error: {e}"
+    results = retriever.retrieve(query, top_k=top_k)
 
     context = "\n\n".join([d["content"] for d in results]) if results else ""
 
@@ -119,48 +86,51 @@ Answer:
     return response.content
 
 
-# ── INIT PIPELINE ───────────────────────────
-retriever = get_retriever()
+# ── INIT PIPELINE (FIXED - NO LOOP) ──
+if st.session_state.retriever is None:
+    st.session_state.retriever = load_rag_pipeline()
+
+retriever = st.session_state.retriever
 llm = get_llm()
 
 
-# ── SIDEBAR ────────────────────────────────
+# ── SIDEBAR ──────────────────────
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
 
-    vs = get_vectorstore()
+    vs = retriever.vectorstore if retriever else None
 
     doc_count = 0
-    if vs and hasattr(vs, "collection") and vs.collection:
-        try:
+    try:
+        if vs and vs.collection:
             doc_count = vs.collection.count()
-        except:
-            doc_count = 0
+    except:
+        doc_count = 0
 
     st.info(f"**{doc_count}** documents indexed and ready")
 
     st.markdown("---")
 
-    if st.button("↺ Refresh Index"):
+    if st.button("↺ Reset App"):
         st.cache_resource.clear()
-        st.session_state.retriever = None
+        st.session_state.clear()
         st.rerun()
 
     st.caption("Built with RAG + Groq")
 
 
-# ── MAIN UI ────────────────────────────────
+# ── MAIN UI ──────────────────────
 st.title("Chat with your Documents")
-st.markdown("Ask questions over AWS, Stripe, OpenAI docs")
+st.markdown("Ask questions over your indexed documents")
 
 
-# ── CHAT HISTORY ───────────────────────────
+# ── CHAT HISTORY ────────────────
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
 
-# ── INPUT ───────────────────────────────────
+# ── INPUT ────────────────────────
 if prompt := st.chat_input("Ask anything..."):
 
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -171,7 +141,7 @@ if prompt := st.chat_input("Ask anything..."):
     with st.chat_message("assistant"):
 
         if retriever is None:
-            st.error("RAG pipeline failed to initialize.")
+            st.error("RAG pipeline not loaded")
             st.stop()
 
         answer = rag_simple(prompt, retriever, llm, top_k=3)
@@ -179,11 +149,7 @@ if prompt := st.chat_input("Ask anything..."):
 
         # ── SOURCES ──
         st.markdown("**Sources:**")
-
-        try:
-            results = retriever.retrieve(prompt, top_k=3)
-        except Exception:
-            results = []
+        results = retriever.retrieve(prompt, top_k=3)
 
         for i, doc in enumerate(results, 1):
             meta = doc.get("metadata", {})
@@ -198,6 +164,6 @@ if prompt := st.chat_input("Ask anything..."):
         )
 
 
-# ── FOOTER ─────────────────────────────────
+# ── FOOTER ──────────────────────
 st.markdown("---")
 st.markdown("*Powered by Groq + RAG Pipeline*")
