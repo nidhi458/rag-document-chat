@@ -121,6 +121,3 @@ class VectorStore:
             raise
 
 
-# Initialize vector store
-vectorstore = VectorStore()
-print(vectorstore)

@@ -174,11 +174,12 @@ header {
 </style>
 """, unsafe_allow_html=True)
 
+
 # Initialize session state
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
+    st.session_state.vectorstore = VectorStore()
 if "embedding_manager" not in st.session_state:
     st.session_state.embedding_manager = None
 if "retriever" not in st.session_state:
