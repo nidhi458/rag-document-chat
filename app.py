@@ -47,17 +47,29 @@ def get_vectorstore():
 # ── RAG PIPELINE LOADER ─────────────────────
 @st.cache_resource
 def load_rag_pipeline():
-    with st.spinner("Loading RAG pipeline..."):
+    try:
+        with st.spinner("Loading RAG pipeline..."):
 
-        vectorstore = VectorStore()
-        embedding_manager = EmbeddingManager()
-        retriever = RAGRetriever(vectorstore, embedding_manager)
+            vectorstore = VectorStore()
+            embedding_manager = EmbeddingManager()
+            retriever = RAGRetriever(vectorstore, embedding_manager)
 
-        st.session_state.vectorstore = vectorstore
-        st.session_state.embedding_manager = embedding_manager
-        st.session_state.retriever = retriever
+            st.session_state.vectorstore = vectorstore
+            st.session_state.embedding_manager = embedding_manager
+            st.session_state.retriever = retriever
 
-        return retriever
+            return retriever
+
+    except Exception as e:
+        st.error(f"Pipeline load failed: {e}")
+        return None
+
+
+# ── SAFE RETRIEVER ACCESS ───────────────────
+def get_retriever():
+    if st.session_state.retriever is None:
+        st.session_state.retriever = load_rag_pipeline()
+    return st.session_state.retriever
 
 
 # ── LLM ─────────────────────────────────────
@@ -74,7 +86,14 @@ def get_llm():
 # ── SAFE RAG FUNCTION ───────────────────────
 def rag_simple(query, retriever, llm, top_k=3):
 
-    results = retriever.retrieve(query, top_k=top_k)
+    if retriever is None:
+        return "RAG system not initialized."
+
+    try:
+        results = retriever.retrieve(query, top_k=top_k)
+    except Exception as e:
+        return f"Retrieval error: {e}"
+
     context = "\n\n".join([d["content"] for d in results]) if results else ""
 
     if not context:
@@ -101,11 +120,7 @@ Answer:
 
 
 # ── INIT PIPELINE ───────────────────────────
-if st.session_state.retriever is None:
-    retriever = load_rag_pipeline()
-else:
-    retriever = st.session_state.retriever
-
+retriever = get_retriever()
 llm = get_llm()
 
 
@@ -115,15 +130,12 @@ with st.sidebar:
 
     vs = get_vectorstore()
 
-    # SAFE DOC COUNT (NO CHROMA .count())
-    doc_count = "608"
-
-    if vs is not None:
-        if hasattr(vs, "doc_count"):
-            try:
-                doc_count = vs.doc_count
-            except:
-                pass
+    doc_count = 0
+    if vs and hasattr(vs, "collection") and vs.collection:
+        try:
+            doc_count = vs.collection.count()
+        except:
+            doc_count = 0
 
     st.info(f"**{doc_count}** documents indexed and ready")
 
@@ -131,12 +143,13 @@ with st.sidebar:
 
     if st.button("↺ Refresh Index"):
         st.cache_resource.clear()
+        st.session_state.retriever = None
         st.rerun()
 
     st.caption("Built with RAG + Groq")
 
 
-# ── MAIN TITLE ─────────────────────────────
+# ── MAIN UI ────────────────────────────────
 st.title("Chat with your Documents")
 st.markdown("Ask questions over AWS, Stripe, OpenAI docs")
 
@@ -157,17 +170,20 @@ if prompt := st.chat_input("Ask anything..."):
 
     with st.chat_message("assistant"):
 
-        if st.session_state.retriever is None:
-            st.error("RAG pipeline not loaded")
+        if retriever is None:
+            st.error("RAG pipeline failed to initialize.")
             st.stop()
 
         answer = rag_simple(prompt, retriever, llm, top_k=3)
-
         st.markdown(answer)
 
-        # SOURCES
+        # ── SOURCES ──
         st.markdown("**Sources:**")
-        results = st.session_state.retriever.retrieve(prompt, top_k=3)
+
+        try:
+            results = retriever.retrieve(prompt, top_k=3)
+        except Exception:
+            results = []
 
         for i, doc in enumerate(results, 1):
             meta = doc.get("metadata", {})

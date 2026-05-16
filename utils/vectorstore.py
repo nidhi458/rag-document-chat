@@ -33,11 +33,9 @@ class VectorStore:
         """Initialize ChromaDB client and collection"""
 
         try:
-            # Remove old incompatible vector store
-            if os.path.exists(self.persist_directory):
-                shutil.rmtree(self.persist_directory)
+            import os
 
-            # Recreate directory
+            # ONLY CREATE DIR — NEVER DELETE ON STREAMLIT CLOUD
             os.makedirs(self.persist_directory, exist_ok=True)
 
             # Create ChromaDB client
@@ -45,18 +43,23 @@ class VectorStore:
                 path=self.persist_directory
             )
 
-            # Create collection
+            # Create collection safely
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name
             )
 
-            print(f"Vector store initialized.")
+            print("Vector store initialized successfully.")
             print(f"Collection name: {self.collection_name}")
-            print(f"Documents in collection: {self.collection.count()}")
+
+            try:
+                print(f"Documents in collection: {self.collection.count()}")
+            except Exception:
+                print("Collection is empty or not ready yet.")
 
         except Exception as e:
             print(f"Error initializing vector store: {e}")
-            raise
+            self.client = None
+            self.collection = None
 
     def add_documents(self, documents: List[Any], embeddings: np.ndarray):
         """
