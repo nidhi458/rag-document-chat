@@ -98,11 +98,11 @@ llm = get_llm()
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
 
-    vs = retriever.vectorstore if retriever else None
+    vs = getattr(retriever, "vectorstore", None)
 
     doc_count = 0
     try:
-        if vs and vs.collection:
+        if vs is not None and hasattr(vs, "collection") and vs.collection is not None:
             doc_count = vs.collection.count()
     except:
         doc_count = 0
@@ -117,7 +117,6 @@ with st.sidebar:
         st.rerun()
 
     st.caption("Built with RAG + Groq")
-
 
 # ── MAIN UI ──────────────────────
 st.title("Chat with your Documents")
