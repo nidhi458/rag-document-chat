@@ -1,11 +1,9 @@
 """
-RAG Document Chat - Streamlit UI (Custom Design)
+RAG Document Chat - Streamlit UI (Dark Theme)
 """
 
 import streamlit as st
 
-# ── MUST be the very first Streamlit call — before any other import that
-#    might trigger streamlit internally (e.g. langchain, torch, chromadb)
 st.set_page_config(
     page_title="Doc Chat",
     page_icon="📄",
@@ -30,66 +28,122 @@ from utils.embeddings import EmbeddingManager
 from query import RAGRetriever
 from langchain_groq import ChatGroq
 
-# ── CUSTOM CSS ───────────────────────────────────────────────────────────────
+# ── DARK THEME CSS ───────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-[data-testid="stAppViewContainer"] {
-    background: #f9f9f8;
+/* ── Base ── */
+html, body, [data-testid="stAppViewContainer"] {
+    background-color: #0f0f0f !important;
+    color: #e8e8e8 !important;
 }
+
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background: #f1f0eb !important;
-    border-right: 0.5px solid #e0ded6;
+    background-color: #161616 !important;
+    border-right: 1px solid #2a2a2a !important;
 }
+[data-testid="stSidebar"] * {
+    color: #e8e8e8 !important;
+}
+
+/* ── Main content area ── */
+[data-testid="stMain"] {
+    background-color: #0f0f0f !important;
+}
+
+/* ── Hide Streamlit chrome ── */
 #MainMenu, footer, header { visibility: hidden; }
 
+/* ── Chat messages ── */
 [data-testid="stChatMessage"] {
     background: transparent !important;
     border: none !important;
-    padding: 0 !important;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
 }
 
+/* ── Chat input ── */
+[data-testid="stChatInput"] textarea {
+    background-color: #1e1e1e !important;
+    color: #e8e8e8 !important;
+    border: 1px solid #333 !important;
+    border-radius: 12px !important;
+}
+[data-testid="stChatInput"] {
+    background-color: #1e1e1e !important;
+    border: 1px solid #333 !important;
+    border-radius: 12px !important;
+}
+
+/* ── Buttons ── */
+[data-testid="stButton"] button {
+    background-color: #1e1e1e !important;
+    color: #e8e8e8 !important;
+    border: 1px solid #333 !important;
+    border-radius: 8px !important;
+}
+[data-testid="stButton"] button:hover {
+    background-color: #2a2a2a !important;
+    border-color: #555 !important;
+}
+
+/* ── Spinner ── */
+[data-testid="stSpinner"] * { color: #aaa !important; }
+
+/* ── Source chips ── */
 .source-chip {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    background: #ffffff;
-    border: 0.5px solid #e0ded6;
+    background: #1e1e1e;
+    border: 1px solid #2a2a2a;
     border-radius: 8px;
     padding: 5px 10px;
     font-size: 12px;
-    color: #555;
+    color: #aaa;
     margin: 4px 4px 0 0;
     line-height: 1.4;
 }
-.source-chip .page-badge {
-    background: #f1f0eb;
+.page-badge {
+    background: #2a2a2a;
     border-radius: 4px;
     padding: 1px 6px;
     font-size: 11px;
-    color: #888;
+    color: #666;
     margin-left: 4px;
 }
 .sources-label {
     font-size: 12px;
-    color: #999;
+    color: #555;
     margin: 10px 0 4px 0;
 }
+
+/* ── Page header ── */
 .page-header {
-    padding: 1rem 0 0.5rem 0;
-    border-bottom: 0.5px solid #e0ded6;
+    padding: 1rem 0 0.75rem 0;
+    border-bottom: 1px solid #2a2a2a;
     margin-bottom: 1rem;
 }
 .page-header h2 {
     font-size: 18px;
     font-weight: 500;
-    color: #1a1a1a;
+    color: #e8e8e8;
     margin: 0;
 }
 .page-header p {
     font-size: 13px;
-    color: #888;
-    margin: 2px 0 0 0;
+    color: #555;
+    margin: 3px 0 0 0;
+}
+
+/* ── Doc badge ── */
+.doc-badge {
+    background: #1a2a1a;
+    color: #5a9e5a;
+    border: 1px solid #2a3d2a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 13px;
+    margin: 8px 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -189,9 +243,7 @@ with st.sidebar:
         pass
 
     st.markdown(
-        f"""<div style="background:#e8f4fd;color:#1a6fa3;border-radius:8px;
-        padding:8px 12px;font-size:13px;margin:8px 0;">
-        📚 {doc_count} documents indexed</div>""",
+        f'<div class="doc-badge">📚 {doc_count} documents indexed</div>',
         unsafe_allow_html=True
     )
 
@@ -213,7 +265,7 @@ with st.sidebar:
         st.rerun()
 
     st.markdown(
-        "<div style='margin-top:2rem;font-size:11px;color:#aaa;'>Powered by Groq + RAG</div>",
+        "<div style='margin-top:2rem;font-size:11px;color:#444;'>Powered by Groq + RAG</div>",
         unsafe_allow_html=True
     )
 
@@ -235,10 +287,10 @@ for msg in st.session_state.messages:
         if msg["role"] == "assistant" and msg.get("sources"):
             chips_html = '<div class="sources-label">🔗 Sources</div>'
             for src in msg["sources"]:
-                chips_html += f"""<span class="source-chip">
-                    📄 {src["file"]}
-                    <span class="page-badge">p. {src["page"]}</span>
-                </span>"""
+                chips_html += (
+                    f'<span class="source-chip">📄 {src["file"]}'
+                    f'<span class="page-badge">p. {src["page"]}</span></span>'
+                )
             st.markdown(chips_html, unsafe_allow_html=True)
 
 
@@ -268,10 +320,10 @@ if prompt := st.chat_input("Ask anything about your documents…"):
                 file = meta.get("source_file", "Unknown")
                 page = meta.get("page", "N/A")
                 sources_meta.append({"file": file, "page": page})
-                chips_html += f"""<span class="source-chip">
-                    📄 {file}
-                    <span class="page-badge">p. {page}</span>
-                </span>"""
+                chips_html += (
+                    f'<span class="source-chip">📄 {file}'
+                    f'<span class="page-badge">p. {page}</span></span>'
+                )
             st.markdown(chips_html, unsafe_allow_html=True)
         else:
             st.caption("No sources found.")
