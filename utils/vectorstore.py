@@ -17,15 +17,17 @@ class VectorStore:
         import chromadb
         import os
 
-        try:
-            os.makedirs(self.persist_directory, exist_ok=True)
+        os.makedirs(self.persist_directory, exist_ok=True)
 
-            # IMPORTANT: safe client init (prevents tenant crash)
+        try:
+            # 🔥 FIX: explicit default tenant/database (Chroma 0.5+ requirement)
             self.client = chromadb.PersistentClient(
                 path=self.persist_directory,
                 settings=chromadb.Settings(
                     anonymized_telemetry=False
-                )
+                ),
+                tenant="default_tenant",
+                database="default_database"
             )
 
             self.collection = self.client.get_or_create_collection(
@@ -38,7 +40,6 @@ class VectorStore:
         except Exception as e:
             print("Vector DB init failed:", e)
             raise
-
     def add_documents(self, embeddings, texts, metadatas):
         if self.collection is None:
             raise Exception("Vector store not initialized")

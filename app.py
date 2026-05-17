@@ -120,20 +120,6 @@ with st.sidebar:
     st.info(f"📚 {doc_count} documents indexed")
 
     st.markdown("---")
-
-    if st.button("🔄 Build / Rebuild Index"):
-        from ingest import ingest_documents
-
-        with st.spinner("Indexing documents..."):
-            vectorstore, embedding_manager = ingest_documents()
-
-        st.success("Index built successfully!")
-        st.rerun()
-    if st.button("🧹 Reset Vector DB"):
-        import shutil
-        shutil.rmtree("vector_store", ignore_errors=True)
-        st.success("Deleted DB. Re-run ingestion.")
-
     st.caption("Built with RAG + Groq")
 
 
