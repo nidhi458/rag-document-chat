@@ -25,6 +25,7 @@ load_dotenv()
 # ── PAGE CONFIG ─────────────────
 st.set_page_config(
     page_title="RAG Doc Chat",
+    page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -67,6 +68,7 @@ def load_rag_pipeline():
     retriever = RAGRetriever(vectorstore, embedding_manager)
 
     return vectorstore, retriever
+
 
 # ── INIT PIPELINE ───────────────
 if st.session_state.retriever is None:
@@ -112,21 +114,36 @@ Answer:
 # ── SIDEBAR ──────────────────────
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
+
     doc_count = 0
     try:
         doc_count = vectorstore.collection.count()
     except:
         doc_count = 0
+
     st.info(f"📚 {doc_count} documents indexed")
 
     st.markdown("---")
+    if st.button("🔄 Build / Rebuild Index"):
+        from ingest import ingest_documents
+
+        with st.spinner("Indexing documents..."):
+            vectorstore, embedding_manager = ingest_documents()
+
+        st.success("Index built successfully!")
+        st.rerun()
+
+    if st.button("↺ Reset App"):
+        st.cache_resource.clear()
+        st.session_state.clear()
+        st.rerun()
+
     st.caption("Built with RAG + Groq")
 
 
 # ── MAIN UI ──────────────────────
 st.title("Chat with your Documents")
 st.markdown("Ask questions over your indexed documents")
-st.markdown("About AWS APIs, stripe payments and OpenAI docs")
 
 
 # ── CHAT HISTORY ────────────────
