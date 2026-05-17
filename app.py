@@ -55,6 +55,12 @@ def get_llm():
 # ── PIPELINE LOADER ─────────────
 @st.cache_resource(show_spinner=True)
 def load_rag_pipeline():
+    import time
+
+    start = time.time()
+
+    st.write("Loading vector DB...")
+
     vectorstore = VectorStore(persist_directory="vector_store")
 
     try:
@@ -62,16 +68,24 @@ def load_rag_pipeline():
     except:
         count = 0
 
-    st.write("VECTOR DB COUNT:", count)
+    st.write(f"DB loaded. Count: {count}")
 
     embedding_manager = EmbeddingManager()
     retriever = RAGRetriever(vectorstore, embedding_manager)
 
+    st.write(f"Pipeline ready in {time.time() - start:.2f}s")
+
     return vectorstore, retriever
 
 
+
 # ── INIT PIPELINE ───────────────
-if st.session_state.retriever is None:
+with st.spinner("Loading RAG system..."):
+    if "retriever" not in st.session_state:
+        vectorstore, retriever = load_rag_pipeline()
+        st.session_state.vectorstore = vectorstore
+        st.session_state.retriever = retriever
+if "retriever" not in st.session_state:
     vectorstore, retriever = load_rag_pipeline()
     st.session_state.vectorstore = vectorstore
     st.session_state.retriever = retriever
