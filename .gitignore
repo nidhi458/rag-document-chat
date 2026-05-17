@@ -1,4 +1,4 @@
-myenv/
+ragenv/
 __pycache__/
 .env
 *.pyc

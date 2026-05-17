@@ -13,36 +13,31 @@ from utils.embeddings import EmbeddingManager
 from utils.vectorstore import VectorStore
 
 def ingest_documents(pdf_directory: str = "data/documents"):
-    """Complete pipeline: load → split → embed → store"""
-    
     print("Starting RAG ingestion pipeline...")
-    
+
     # 1. LOAD PDFs
-    print("\n Step 1: Loading PDFs...")
     documents = process_all_pdfs(pdf_directory)
-    print(f"✓ Loaded {len(documents)} pages")
-    
-    # 2. SPLIT into chunks
-    print("\n Step 2: Splitting documents...")
+
+    # 2. SPLIT
     chunks = split_documents(documents)
-    print(f"✓ Created {len(chunks)} chunks")
-    
-    # 3. GENERATE embeddings
-    print("\n Step 3: Generating embeddings...")
+
+    # 3. EMBEDDINGS
     embedding_manager = EmbeddingManager()
     texts = [chunk.page_content for chunk in chunks]
     embeddings = embedding_manager.generate_embeddings(texts)
-    print(f"✓ Generated embeddings shape: {embeddings.shape}")
-    
-    # 4. STORE in vector DB
-    print("\n Step 4: Storing in vector database...")
+
+    # 4. STORE — delete old collection first, then recreate
     vectorstore = VectorStore()
+    vectorstore.client.delete_collection(vectorstore.collection_name)        # ← add this
+    vectorstore.collection = vectorstore.client.create_collection(           # ← and this
+        name=vectorstore.collection_name
+    )
+
     texts = [chunk.page_content for chunk in chunks]
     metadatas = [chunk.metadata for chunk in chunks]
     vectorstore.add_documents(embeddings, texts, metadatas)
-    print("Ingestion complete!")
-    print("Stored docs:", vectorstore.collection.count())
-    
+
+    print("Ingestion complete! Stored docs:", vectorstore.collection.count())
     return vectorstore, embedding_manager
 
 if __name__ == "__main__":

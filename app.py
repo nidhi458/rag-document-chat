@@ -1,16 +1,19 @@
 """
-RAG Document Chat - Streamlit UI (Stable Fix Version)
+RAG Document Chat - Streamlit UI
 """
+import chromadb
+chromadb.config.Settings(anonymized_telemetry=False)
 
 import streamlit as st
 import sys
 import os
+
 os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 from dotenv import load_dotenv
 
-# 🔥 IMPORTANT: prevent torch/streamlit watcher crash
-os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+load_dotenv()
 
 sys.path.append("utils")
 
@@ -19,10 +22,7 @@ from utils.embeddings import EmbeddingManager
 from query import RAGRetriever
 from langchain_groq import ChatGroq
 
-# ── ENV ─────────────────────────
-load_dotenv()
-
-# ── PAGE CONFIG ─────────────────
+# ── PAGE CONFIG ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="RAG Doc Chat",
     page_icon="📄",
@@ -30,18 +30,16 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ── SESSION STATE ───────────────
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "retriever" not in st.session_state:
-    st.session_state.retriever = None
-
-if "vectorstore" not in st.session_state:
-    st.session_state.vectorstore = None
+# ── SESSION STATE ────────────────────────────────────────────────────────────
+# Initialise all keys together — avoids the double-check bug where the second
+# `if "retriever" not in st.session_state` block was silently skipped because
+# the first block had already added the key (as None).
+for key in ("messages", "retriever", "vectorstore"):
+    if key not in st.session_state:
+        st.session_state[key] = [] if key == "messages" else None
 
 
-# ── LLM ─────────────────────────
+# ── LLM ─────────────────────────────────────────────────────────────────────
 @st.cache_resource
 def get_llm():
     return ChatGroq(
@@ -52,61 +50,61 @@ def get_llm():
     )
 
 
-# ── PIPELINE LOADER ─────────────
-@st.cache_resource(show_spinner=True)
+# ── PIPELINE LOADER ──────────────────────────────────────────────────────────
+# st.write() calls removed from inside the cached function — Streamlit does not
+# guarantee UI calls work reliably inside @st.cache_resource.
+@st.cache_resource(show_spinner=False)
 def load_rag_pipeline():
     import time
 
     start = time.time()
-
-    st.write("Loading vector DB...")
-
     vectorstore = VectorStore(persist_directory="vector_store")
 
     try:
         count = vectorstore.collection.count()
-    except:
+    except Exception:
         count = 0
-
-    st.write(f"DB loaded. Count: {count}")
 
     embedding_manager = EmbeddingManager()
     retriever = RAGRetriever(vectorstore, embedding_manager)
 
-    st.write(f"Pipeline ready in {time.time() - start:.2f}s")
-
-    return vectorstore, retriever
-
+    elapsed = time.time() - start
+    return vectorstore, retriever, count, elapsed
 
 
-# ── INIT PIPELINE ───────────────
-with st.spinner("Loading RAG system..."):
-    if "retriever" not in st.session_state:
-        vectorstore, retriever = load_rag_pipeline()
-        st.session_state.vectorstore = vectorstore
-        st.session_state.retriever = retriever
-if "retriever" not in st.session_state:
-    vectorstore, retriever = load_rag_pipeline()
+# ── INIT PIPELINE (runs once per session) ───────────────────────────────────
+if st.session_state.retriever is None:
+    with st.spinner("Loading RAG system..."):
+        vectorstore, retriever, count, elapsed = load_rag_pipeline()
+
+    if count == 0:
+        # Fresh deploy (e.g. Streamlit Cloud) — no persisted vector store found.
+        # Auto-ingest PDFs from data/documents/ on first run.
+        st.info("No documents indexed yet — running first-time ingestion...")
+        from ingest import ingest_documents
+        with st.spinner("Indexing documents for the first time..."):
+            vectorstore, embedding_manager = ingest_documents()
+            retriever = RAGRetriever(vectorstore, embedding_manager)
+        st.success("Ingestion complete!")
+
     st.session_state.vectorstore = vectorstore
     st.session_state.retriever = retriever
-
+    st.toast(f"Pipeline ready — {vectorstore.collection.count()} docs indexed ({elapsed:.2f}s)", icon="✅")
 
 vectorstore = st.session_state.vectorstore
 retriever = st.session_state.retriever
 llm = get_llm()
 
 
-# ── RAG CALL ────────────────────
+# ── RAG CALL ─────────────────────────────────────────────────────────────────
 def rag_simple(query, retriever, llm):
-
     results = retriever.retrieve(query, top_k=3)
     context = "\n\n".join([d["content"] for d in results]) if results else ""
 
     if not context:
         return "No relevant context found in your documents."
 
-    prompt = f"""
-You are an expert assistant.
+    prompt = f"""You are an expert assistant.
 
 Answer using the provided context in 2-3 clear sentences.
 
@@ -118,33 +116,37 @@ Question:
 
 Answer:
 """
-
     with st.spinner("Generating answer..."):
         response = llm.invoke(prompt)
 
     return response.content
 
 
-# ── SIDEBAR ──────────────────────
+# ── SIDEBAR ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
 
     doc_count = 0
     try:
         doc_count = vectorstore.collection.count()
-    except:
-        doc_count = 0
+    except Exception:
+        pass
 
     st.info(f"📚 {doc_count} documents indexed")
-
     st.markdown("---")
+
     if st.button("🔄 Build / Rebuild Index"):
         from ingest import ingest_documents
 
         with st.spinner("Indexing documents..."):
-            vectorstore, embedding_manager = ingest_documents()
+            new_vectorstore, new_embedding_manager = ingest_documents()
 
-        st.success("Index built successfully!")
+        # ── FIX: clear cache AND update session state so the new pipeline is used
+        st.cache_resource.clear()
+        st.session_state.vectorstore = new_vectorstore
+        st.session_state.retriever = RAGRetriever(new_vectorstore, new_embedding_manager)
+
+        st.success("Index rebuilt successfully!")
         st.rerun()
 
     if st.button("↺ Reset App"):
@@ -155,40 +157,35 @@ with st.sidebar:
     st.caption("Built with RAG + Groq")
 
 
-# ── MAIN UI ──────────────────────
+# ── MAIN UI ───────────────────────────────────────────────────────────────────
 st.title("Chat with your Documents")
 st.markdown("Ask questions over your indexed documents")
 
-
-# ── CHAT HISTORY ────────────────
+# ── CHAT HISTORY ─────────────────────────────────────────────────────────────
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-
-# ── INPUT ────────────────────────
+# ── INPUT ─────────────────────────────────────────────────────────────────────
 if prompt := st.chat_input("Ask anything..."):
-
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     with st.chat_message("user"):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-
         if retriever is None:
-            st.error("RAG pipeline not loaded")
+            st.error("RAG pipeline not loaded.")
             st.stop()
 
         answer = rag_simple(prompt, retriever, llm)
         st.markdown(answer)
 
-        # ── SOURCES ──
         st.markdown("**Sources:**")
         results = retriever.retrieve(prompt, top_k=3)
 
         if not results:
-            st.write("No sources found")
+            st.write("No sources found.")
         else:
             for i, doc in enumerate(results, 1):
                 meta = doc.get("metadata", {})
@@ -198,11 +195,8 @@ if prompt := st.chat_input("Ask anything..."):
                 with st.expander(f"{i}. {source} · page {page}"):
                     st.write(doc["content"][:500] + "...")
 
-        st.session_state.messages.append(
-            {"role": "assistant", "content": answer}
-        )
+        st.session_state.messages.append({"role": "assistant", "content": answer})
 
-
-# ── FOOTER ──────────────────────
+# ── FOOTER ────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("*Powered by Groq + RAG Pipeline*")
