@@ -5,6 +5,8 @@ RAG Document Chat - Streamlit UI (Stable Fix Version)
 import streamlit as st
 import sys
 import os
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from dotenv import load_dotenv
 
 # 🔥 IMPORTANT: prevent torch/streamlit watcher crash
@@ -55,20 +57,23 @@ def get_llm():
 def load_rag_pipeline():
     vectorstore = VectorStore(persist_directory="vector_store")
 
-    # 🔥 DEBUG (critical for your issue)
-    st.write("VECTOR DB COUNT:", vectorstore.collection.count())
+    try:
+        count = vectorstore.collection.count()
+    except:
+        count = 0
+
+    st.write("VECTOR DB COUNT:", count)
 
     embedding_manager = EmbeddingManager()
     retriever = RAGRetriever(vectorstore, embedding_manager)
 
     return vectorstore, retriever
 
-
 # ── INIT PIPELINE ───────────────
 if st.session_state.retriever is None:
-    vs, retr = load_rag_pipeline()
-    st.session_state.vectorstore = vs
-    st.session_state.retriever = retr
+    vectorstore, retriever = load_rag_pipeline()
+    st.session_state.vectorstore = vectorstore
+    st.session_state.retriever = retriever
 
 
 vectorstore = st.session_state.vectorstore
@@ -108,17 +113,26 @@ Answer:
 # ── SIDEBAR ──────────────────────
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
-
     doc_count = 0
-    if vectorstore and vectorstore.collection:
+    try:
         doc_count = vectorstore.collection.count()
-
+    except:
+        doc_count = 0
     st.info(f"📚 {doc_count} documents indexed")
 
     st.markdown("---")
 
     if st.button("🔄 Rebuild Index (Run ingest.py first)"):
         st.warning("Run ingest.py locally, then refresh app")
+
+    if st.button("🔄 Build / Rebuild Index"):
+        from ingest import ingest_documents
+
+        with st.spinner("Indexing documents..."):
+            vectorstore, embedding_manager = ingest_documents()
+
+        st.success("Index built successfully!")
+        st.rerun()
 
     if st.button("↺ Reset App"):
         st.cache_resource.clear()
