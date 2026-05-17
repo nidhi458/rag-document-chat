@@ -25,7 +25,6 @@ load_dotenv()
 # ── PAGE CONFIG ─────────────────
 st.set_page_config(
     page_title="RAG Doc Chat",
-    page_icon="📄",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -137,6 +136,7 @@ with st.sidebar:
 # ── MAIN UI ──────────────────────
 st.title("Chat with your Documents")
 st.markdown("Ask questions over your indexed documents")
+st.markdown("About AWS APIs, stripe payments and OpenAI docs")
 
 
 # ── CHAT HISTORY ────────────────
