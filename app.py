@@ -129,6 +129,10 @@ with st.sidebar:
 
         st.success("Index built successfully!")
         st.rerun()
+    if st.button("🧹 Reset Vector DB"):
+        import shutil
+        shutil.rmtree("vector_store", ignore_errors=True)
+        st.success("Deleted DB. Re-run ingestion.")
 
     st.caption("Built with RAG + Groq")
 
