@@ -37,8 +37,11 @@ def ingest_documents(pdf_directory: str = "data/documents"):
     # 4. STORE in vector DB
     print("\n Step 4: Storing in vector database...")
     vectorstore = VectorStore()
-    vectorstore.add_documents(chunks, embeddings)
+    texts = [chunk.page_content for chunk in chunks]
+    metadatas = [chunk.metadata for chunk in chunks]
+    vectorstore.add_documents(embeddings, texts, metadatas)
     print("Ingestion complete!")
+    print("Stored docs:", vectorstore.collection.count())
     
     return vectorstore, embedding_manager
 

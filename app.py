@@ -50,7 +50,8 @@ def get_llm():
 # ── RAG PIPELINE ────────────────
 @st.cache_resource(show_spinner=True)
 def load_rag_pipeline():
-    vectorstore = VectorStore()
+    vectorstore = VectorStore(persist_directory="vector_store")
+    st.write("VECTOR DB COUNT:", vectorstore.collection.count())
     embedding_manager = EmbeddingManager()
     retriever = RAGRetriever(vectorstore, embedding_manager)
     return retriever
