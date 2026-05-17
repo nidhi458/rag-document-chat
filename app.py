@@ -7,7 +7,7 @@ import sys
 import os
 from dotenv import load_dotenv
 
-# 🔥 FIX: suppress torch + streamlit watcher crash (IMPORTANT for Cloud)
+# 🔥 IMPORTANT: prevent torch/streamlit watcher crash
 os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
 
 sys.path.append("utils")
@@ -35,6 +35,9 @@ if "messages" not in st.session_state:
 if "retriever" not in st.session_state:
     st.session_state.retriever = None
 
+if "vectorstore" not in st.session_state:
+    st.session_state.vectorstore = None
+
 
 # ── LLM ─────────────────────────
 @st.cache_resource
@@ -47,21 +50,36 @@ def get_llm():
     )
 
 
-# ── RAG PIPELINE ────────────────
+# ── PIPELINE LOADER ─────────────
 @st.cache_resource(show_spinner=True)
 def load_rag_pipeline():
     vectorstore = VectorStore(persist_directory="vector_store")
+
+    # 🔥 DEBUG (critical for your issue)
     st.write("VECTOR DB COUNT:", vectorstore.collection.count())
+
     embedding_manager = EmbeddingManager()
     retriever = RAGRetriever(vectorstore, embedding_manager)
-    return retriever
+
+    return vectorstore, retriever
 
 
-# ── SAFE RAG CALL ───────────────
-def rag_simple(query, retriever, llm, top_k=3):
+# ── INIT PIPELINE ───────────────
+if st.session_state.retriever is None:
+    vs, retr = load_rag_pipeline()
+    st.session_state.vectorstore = vs
+    st.session_state.retriever = retr
 
-    results = retriever.retrieve(query, top_k=top_k)
 
+vectorstore = st.session_state.vectorstore
+retriever = st.session_state.retriever
+llm = get_llm()
+
+
+# ── RAG CALL ────────────────────
+def rag_simple(query, retriever, llm):
+
+    results = retriever.retrieve(query, top_k=3)
     context = "\n\n".join([d["content"] for d in results]) if results else ""
 
     if not context:
@@ -87,30 +105,20 @@ Answer:
     return response.content
 
 
-# ── INIT PIPELINE (FIXED - NO LOOP) ──
-if st.session_state.retriever is None:
-    st.session_state.retriever = load_rag_pipeline()
-
-retriever = st.session_state.retriever
-llm = get_llm()
-
-
 # ── SIDEBAR ──────────────────────
 with st.sidebar:
     st.title("📄 RAG Doc Chat")
 
-    vs = getattr(retriever, "vectorstore", None)
-
     doc_count = 0
-    try:
-        if vs is not None and hasattr(vs, "collection") and vs.collection is not None:
-            doc_count = vs.collection.count()
-    except:
-        doc_count = 0
+    if vectorstore and vectorstore.collection:
+        doc_count = vectorstore.collection.count()
 
-    st.info(f"**{doc_count}** documents indexed and ready")
+    st.info(f"📚 {doc_count} documents indexed")
 
     st.markdown("---")
+
+    if st.button("🔄 Rebuild Index (Run ingest.py first)"):
+        st.warning("Run ingest.py locally, then refresh app")
 
     if st.button("↺ Reset App"):
         st.cache_resource.clear()
@@ -118,6 +126,7 @@ with st.sidebar:
         st.rerun()
 
     st.caption("Built with RAG + Groq")
+
 
 # ── MAIN UI ──────────────────────
 st.title("Chat with your Documents")
@@ -144,20 +153,23 @@ if prompt := st.chat_input("Ask anything..."):
             st.error("RAG pipeline not loaded")
             st.stop()
 
-        answer = rag_simple(prompt, retriever, llm, top_k=3)
+        answer = rag_simple(prompt, retriever, llm)
         st.markdown(answer)
 
         # ── SOURCES ──
         st.markdown("**Sources:**")
         results = retriever.retrieve(prompt, top_k=3)
 
-        for i, doc in enumerate(results, 1):
-            meta = doc.get("metadata", {})
-            source = meta.get("source_file", "Unknown")
-            page = meta.get("page", "N/A")
+        if not results:
+            st.write("No sources found")
+        else:
+            for i, doc in enumerate(results, 1):
+                meta = doc.get("metadata", {})
+                source = meta.get("source_file", "Unknown")
+                page = meta.get("page", "N/A")
 
-            with st.expander(f"{i}. {source} · page {page}"):
-                st.write(doc["content"][:500] + "...")
+                with st.expander(f"{i}. {source} · page {page}"):
+                    st.write(doc["content"][:500] + "...")
 
         st.session_state.messages.append(
             {"role": "assistant", "content": answer}

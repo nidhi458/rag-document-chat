@@ -47,7 +47,7 @@ class VectorStore:
             embeddings=embeddings,
             documents=texts,
             metadatas=metadatas,
-            ids=[str(uuid.uuid4()) for _ in range(len(texts))]
+            ids = [str(uuid.uuid4()) for _ in texts]
         )
 
     def query(self, query_embedding, top_k=3):
