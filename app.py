@@ -122,9 +122,6 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if st.button("🔄 Rebuild Index (Run ingest.py first)"):
-        st.warning("Run ingest.py locally, then refresh app")
-
     if st.button("🔄 Build / Rebuild Index"):
         from ingest import ingest_documents
 
@@ -132,11 +129,6 @@ with st.sidebar:
             vectorstore, embedding_manager = ingest_documents()
 
         st.success("Index built successfully!")
-        st.rerun()
-
-    if st.button("↺ Reset App"):
-        st.cache_resource.clear()
-        st.session_state.clear()
         st.rerun()
 
     st.caption("Built with RAG + Groq")
