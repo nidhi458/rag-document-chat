@@ -1,46 +1,74 @@
+
 """
 Complete RAG document ingestion pipeline
 """
-from pathlib import Path
-import sys
 
-# Add utils to path
-sys.path.append("utils")
+import streamlit as st
 
 from utils.loaders import process_all_pdfs
 from utils.splitter import split_documents
 from utils.embeddings import EmbeddingManager
 from utils.vectorstore import VectorStore
 
+
+@st.cache_resource(show_spinner=False)
 def ingest_documents(pdf_directory: str = "data/documents"):
+
     print("Starting RAG ingestion pipeline...")
 
-    # 1. LOAD PDFs
+    # 1. Initialize vector store and embedding model
+    vectorstore = VectorStore()
+    embedding_manager = EmbeddingManager()
+
+    # 2. Reuse previously indexed documents
+    existing_count = vectorstore.collection.count()
+
+    if existing_count > 0:
+        print(
+            f"Existing collection found: "
+            f"{existing_count} chunks."
+        )
+        print("Skipping duplicate ingestion.")
+
+        return vectorstore, embedding_manager
+
+    # 3. Load PDFs
     documents = process_all_pdfs(pdf_directory)
 
-    # 2. SPLIT
+    if not documents:
+        raise ValueError(
+            f"No PDF documents found in {pdf_directory}"
+        )
+
+    # 4. Split documents
     chunks = split_documents(documents)
 
-    # 3. EMBEDDINGS
-    embedding_manager = EmbeddingManager()
-    texts = [chunk.page_content for chunk in chunks]
-    embeddings = embedding_manager.generate_embeddings(texts)
+    if not chunks:
+        raise ValueError("No text chunks generated.")
 
-    # 4. STORE — delete old collection first, then recreate
-    vectorstore = VectorStore()
-    vectorstore.client.delete_collection(vectorstore.collection_name)        # ← add this
-    vectorstore.collection = vectorstore.client.create_collection(           # ← and this
-        name=vectorstore.collection_name
-    )
-
+    # 5. Generate embeddings
     texts = [chunk.page_content for chunk in chunks]
     metadatas = [chunk.metadata for chunk in chunks]
-    vectorstore.add_documents(embeddings, texts, metadatas)
 
-    print("Ingestion complete! Stored docs:", vectorstore.collection.count())
+    embeddings = embedding_manager.generate_embeddings(
+        texts
+    )
+
+    # 6. Store embeddings without deleting collection
+    vectorstore.add_documents(
+        embeddings,
+        texts,
+        metadatas
+    )
+
+    print(
+        "Ingestion complete! Stored docs:",
+        vectorstore.collection.count()
+    )
+
     return vectorstore, embedding_manager
 
+
 if __name__ == "__main__":
-    # Run pipeline
     vectorstore, embedding_manager = ingest_documents()
-    print("\n Pipeline ready! Run: python query.py")
+    print("\nPipeline ready! Run: python query.py")
